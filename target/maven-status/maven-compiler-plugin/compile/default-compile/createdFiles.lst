@@ -1,0 +1,13 @@
+com\urlshortener\rest\RedirectController.class
+com\urlshortener\rest\UrlController.class
+com\urlshortener\dao\UrlMappingRepository.class
+com\urlshortener\UrlShortenerApplication.class
+com\urlshortener\dto\UrlResponse.class
+com\urlshortener\entity\UrlMapping.class
+com\urlshortener\dto\UrlStatsResponse.class
+com\urlshortener\exception\UrlNotFoundException.class
+com\urlshortener\exception\GlobalExceptionHandler$ApiError.class
+com\urlshortener\service\UrlShorteningService.class
+com\urlshortener\exception\UrlAlreadyExistsException.class
+com\urlshortener\exception\GlobalExceptionHandler.class
+com\urlshortener\dto\UrlRequest.class
