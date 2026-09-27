@@ -17,81 +17,24 @@ public class UrlMapping {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private long id;
 
-	@Column(nullable = false)
+	@Column(nullable = false, length = 2048)
 	private String originalUrl;
 
-	@Column(nullable = false, unique = true)
+	@Column(nullable = false, unique = true, length = 10)
 	private String shortCode;
-	
+
 	@Column(nullable = false)
 	private LocalDateTime createdAt;
 
 	@Column(nullable = false)
 	private LocalDateTime updatedAt;
-	
-    // New field for counting hits
-    private int hitCount = 0;
-	
 
-	public long getId() {
-		return id;
+	private long hitCount = 0;
+
+	public void updateTime() {
+		this.updatedAt = LocalDateTime.now();
 	}
 
-	public void setId(long id) {
-		this.id = id;
-	}
-
-	public String getOriginalUrl() {
-		return originalUrl;
-	}
-
-	public void setOriginalUrl(String originalUrl) {
-		this.originalUrl = originalUrl;
-	}
-
-	public String getShortCode() {
-		return shortCode;
-	}
-
-	public void setShortCode(String shortCode) {
-		this.shortCode = shortCode;
-	}
-
-	
-
-	public LocalDateTime getCreatedAt() {
-		return createdAt;
-	}
-
-	public void setCreatedAt(LocalDateTime createdAt) {
-		this.createdAt = createdAt;
-	}
-
-	public LocalDateTime getUpdatedAt() {
-		return updatedAt;
-	}
-
-	public void setUpdatedAt(LocalDateTime updatedAt) {
-		this.updatedAt = updatedAt;
-	}
-
-	public int getHitCount() {
-		return hitCount;
-	}
-
-	public void setHitCount(int hitCount) {
-		this.hitCount = hitCount;
-	}
-
-	 public void incrementHitCount() {
-	        this.hitCount++;
-	    }
-	 
-	 public void updateTime() {
-		 this.updatedAt = LocalDateTime.now();
-	 }
-	 
-	 
 	public UrlMapping(String originalUrl, String shortCode) {
 		super();
 		this.originalUrl = originalUrl;

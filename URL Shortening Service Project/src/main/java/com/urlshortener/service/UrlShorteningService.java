@@ -1,11 +1,10 @@
 package com.urlshortener.service;
 
-import java.time.LocalDateTime;
-import java.util.Optional;
-import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.urlshortener.dao.UrlMappingRepository;
 import com.urlshortener.dto.UrlResponse;
@@ -14,97 +13,80 @@ import com.urlshortener.entity.UrlMapping;
 import com.urlshortener.exception.UrlAlreadyExistsException;
 import com.urlshortener.exception.UrlNotFoundException;
 
-
 @Service
 public class UrlShorteningService {
 
-	@Autowired
-	private UrlMappingRepository repo;
-
+	private final UrlMappingRepository repo;
 
 	private static final String CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 	private static final int SHORT_CODE_LENGTH = 6;
+	private static final int MAX_GENERATION_ATTEMPTS = 5;
 
-	public Optional<UrlResponse> createShortUrl(String originalUrl) {
-		Optional<UrlMapping> existing = repo.findByOriginalUrl(originalUrl);
-		if (existing.isPresent()) {
+	public UrlShorteningService(UrlMappingRepository repo) {
+		this.repo = repo;
+	}
+
+	@Transactional(noRollbackFor = DataIntegrityViolationException.class)
+	public UrlResponse createShortUrl(String originalUrl) {
+		if (repo.existsByOriginalUrl(originalUrl)) {
 			throw new UrlAlreadyExistsException("URL already exists");
 		}
 
-		String shortCode;
-		do {
-			shortCode = generateShortCode();
-		} while (repo.findByShortCode(shortCode).isPresent());
-
-		UrlMapping mapping = new UrlMapping(originalUrl ,shortCode );
-
-		repo.save(mapping);
-
-		return Optional.ofNullable(new UrlResponse(mapping.getId(), mapping.getOriginalUrl(), mapping.getShortCode(),
-				mapping.getCreatedAt(), mapping.getUpdatedAt()));
-	}
-
-
-	public Optional<UrlResponse> getOriginalUrl(String shortCode) {
-		Optional<UrlMapping> urlMapping = repo.findByShortCode(shortCode);
-		return urlMapping.map(entity -> {
-			// Increment the access count each time the URL is retrieved
-			entity.setHitCount(entity.getHitCount() + 1);
-			repo.save(entity); // Save the updated entity
-
-			return new UrlResponse(entity.getId(), entity.getOriginalUrl(), entity.getShortCode(),
-					entity.getCreatedAt(), entity.getUpdatedAt());
-		});
-	}
-
-
-	public Optional <UrlResponse>updateOriginalUrl(String shortCode , String newUrl)
-	{
-		Optional<UrlMapping> optionalUrlMapping = repo.findByShortCode(shortCode);
-
-		if (optionalUrlMapping.isEmpty())
-			 throw new UrlNotFoundException("Short URL not found");
-
-		UrlMapping urlMapping = optionalUrlMapping.get() ;
-		urlMapping.setOriginalUrl(newUrl);
-		urlMapping.setUpdatedAt(LocalDateTime.now());
-
-		repo.save(urlMapping);
-		
-		return Optional.ofNullable(new UrlResponse(urlMapping.getId(), urlMapping.getOriginalUrl(), urlMapping.getShortCode(),
-				urlMapping.getCreatedAt(), urlMapping.getUpdatedAt()));
-
-
-	}
-
-
-	public boolean deleteShortUrl(String shortCode) {
-		Optional<UrlMapping> optionalUrl = repo.findByShortCode(shortCode);
-		if (optionalUrl.isPresent()) {
-			repo.delete(optionalUrl.get());
-			return true;
+		DataIntegrityViolationException lastCollision = null;
+		for (int attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
+			try {
+				UrlMapping mapping = new UrlMapping(originalUrl, generateShortCode());
+				repo.save(mapping);
+				return toResponse(mapping);
+			} catch (DataIntegrityViolationException e) {
+				lastCollision = e;
+			}
 		}
-		return false;
+		throw lastCollision;
 	}
 
+	@Transactional
+	public UrlResponse getOriginalUrl(String shortCode) {
+		UrlMapping entity = findOrThrow(shortCode);
+		repo.incrementHitCount(shortCode);
+		return toResponse(entity);
+	}
 
-	public Optional<UrlStatsResponse> getUrlStats(String shortCode) {
-		Optional<UrlMapping> urlEntity = repo.findByShortCode(shortCode);
-		if (urlEntity.isEmpty()) {
-			return Optional.empty();
-		}
+	@Transactional
+	public UrlResponse updateOriginalUrl(String shortCode, String newUrl) {
+		UrlMapping entity = findOrThrow(shortCode);
+		entity.setOriginalUrl(newUrl);
+		entity.updateTime();
+		return toResponse(entity);
+	}
 
-		UrlMapping entity = urlEntity.get();
-		UrlStatsResponse statsResponse = new UrlStatsResponse(entity.getId(), entity.getOriginalUrl(), entity.getShortCode(),
+	@Transactional
+	public void deleteShortUrl(String shortCode) {
+		UrlMapping entity = findOrThrow(shortCode);
+		repo.delete(entity);
+	}
+
+	@Transactional(readOnly = true)
+	public UrlStatsResponse getUrlStats(String shortCode) {
+		UrlMapping entity = findOrThrow(shortCode);
+		return new UrlStatsResponse(entity.getId(), entity.getOriginalUrl(), entity.getShortCode(),
 				entity.getCreatedAt(), entity.getUpdatedAt(), entity.getHitCount());
-		return Optional.of(statsResponse);
+	}
+
+	private UrlMapping findOrThrow(String shortCode) {
+		return repo.findByShortCode(shortCode)
+				.orElseThrow(() -> new UrlNotFoundException("Short URL not found"));
+	}
+
+	private UrlResponse toResponse(UrlMapping mapping) {
+		return new UrlResponse(mapping.getId(), mapping.getOriginalUrl(), mapping.getShortCode(),
+				mapping.getCreatedAt(), mapping.getUpdatedAt());
 	}
 
 	private String generateShortCode() {
-		Random random = new Random();
 		StringBuilder sb = new StringBuilder(SHORT_CODE_LENGTH);
 		for (int i = 0; i < SHORT_CODE_LENGTH; i++) {
-			sb.append(CHARACTERS.charAt(random.nextInt(CHARACTERS.length())));
+			sb.append(CHARACTERS.charAt(ThreadLocalRandom.current().nextInt(CHARACTERS.length())));
 		}
 		return sb.toString();
 	}
